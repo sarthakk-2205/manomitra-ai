@@ -6,6 +6,9 @@ from pydantic import BaseModel, Field
 from app.chatbot import generate_reply,generate_rag_reply
 from app.sentiment import analyze_sentiment
 from app.safety import check_safety
+from app.emotion import analyze_emotion
+from app.chatbot import generate_memory_reply
+from app.chatbot import generate_memory_rag_reply
 
 
 app = FastAPI(
@@ -31,6 +34,10 @@ def health():
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
 
+class MemoryChatRequest(BaseModel):
+    session_id: str = Field(min_length=1, max_length=128)
+    message: str = Field(min_length=1, max_length=4000)
+
 
 @app.post("/chat")
 def chat(request: ChatRequest):
@@ -52,21 +59,45 @@ def chat(request: ChatRequest):
         )
 
 
-
-    
 @app.post("/sentiment")
 def sentiment(request: ChatRequest):
     try:
         return analyze_sentiment(request.message)
 
     except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error))
+        raise HTTPException(
+            status_code=400,
+            detail=str(error)
+        )
 
     except Exception:
         raise HTTPException(
             status_code=500,
             detail="Sentiment analysis is temporarily unavailable."
         )
+
+
+@app.post("/emotion")
+def emotion(request: ChatRequest):
+    try:
+        return analyze_emotion(request.message)
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error)
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Emotion detection is temporarily unavailable."
+        )
+
+
+
+    
+
 
 
 
@@ -103,6 +134,43 @@ def wellness_chat(request: ChatRequest):
             status_code=502,
             detail="The wellness assistant is temporarily unavailable."
         )
+
+
+
+
+@app.post("/memory-chat")
+def memory_chat(request: MemoryChatRequest):
+    try:
+        reply = generate_memory_reply(
+            message=request.message,
+            session_id=request.session_id
+        )
+
+        return {
+            "session_id": request.session_id,
+            "reply": reply
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/memory-rag-chat")
+def memory_rag_chat(request: MemoryChatRequest):
+    try:
+        result = generate_memory_rag_reply(
+            message=request.message,
+            session_id=request.session_id
+        )
+
+        return {
+            "session_id": request.session_id,
+            "reply": result["reply"],
+            "sources": result["sources"]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
