@@ -2,13 +2,15 @@
 
 ## 1. Base URL
 
-Local development:
+**Local development:**
 
 `http://127.0.0.1:8000`
 
-Swagger documentation:
+**Swagger documentation:**
 
 `http://127.0.0.1:8000/docs`
+
+---
 
 ## 2. Health Check
 
@@ -17,11 +19,14 @@ Swagger documentation:
 Purpose: Check whether the AI service is running.
 
 Response:
+
 ```json
 {
   "status": "healthy"
 }
 ```
+
+---
 
 ## 3. General Chatbot
 
@@ -30,6 +35,7 @@ Response:
 Purpose: Generate a general AI chatbot response.
 
 Request:
+
 ```json
 {
   "message": "How can I manage exam stress?"
@@ -37,11 +43,14 @@ Request:
 ```
 
 Response:
+
 ```json
 {
   "reply": "A supportive response from the AI."
 }
 ```
+
+---
 
 ## 4. Sentiment Analysis
 
@@ -50,6 +59,7 @@ Response:
 Purpose: Analyse general positive or negative sentiment.
 
 Request:
+
 ```json
 {
   "message": "I feel happy and motivated today."
@@ -57,6 +67,7 @@ Request:
 ```
 
 Response:
+
 ```json
 {
   "sentiment": "positive",
@@ -67,6 +78,8 @@ Response:
 
 Note: Confidence values are illustrative. Sentiment analysis is not a mental-health diagnosis or crisis-risk assessment.
 
+---
+
 ## 5. Emotion Detection
 
 **POST `/emotion`**
@@ -74,6 +87,7 @@ Note: Confidence values are illustrative. Sentiment analysis is not a mental-hea
 Purpose: Identify the predominant emotion expressed in a message.
 
 Request:
+
 ```json
 {
   "message": "I feel very lonely today."
@@ -81,6 +95,7 @@ Request:
 ```
 
 Response:
+
 ```json
 {
   "emotion": "sadness",
@@ -90,6 +105,7 @@ Response:
 ```
 
 Possible emotion labels include:
+
 - Anger
 - Disgust
 - Fear
@@ -100,6 +116,8 @@ Possible emotion labels include:
 
 Note: This is a general-purpose English emotion classifier, not a clinical assessment.
 
+---
+
 ## 6. RAG Wellness Chat
 
 **POST `/wellness-chat`**
@@ -107,13 +125,15 @@ Note: This is a general-purpose English emotion classifier, not a clinical asses
 Purpose: Generate wellness responses using information retrieved from the project's wellness documents. Includes basic safety phrase screening.
 
 Request:
+
 ```json
 {
   "message": "I feel overwhelmed by exams. What can I do?"
 }
 ```
 
-Normal response:
+### Normal response
+
 ```json
 {
   "reply": "A supportive answer grounded in retrieved resources.",
@@ -130,7 +150,8 @@ Normal response:
 }
 ```
 
-Possible-risk response:
+### Possible-risk response
+
 ```json
 {
   "reply": "Supportive safety guidance.",
@@ -151,13 +172,16 @@ Possible-risk response:
 }
 ```
 
+---
+
 ## 7. Conversation Memory Chat
 
 **POST `/memory-chat`**
 
-Purpose: Generate responses using previous messages from the same session.
+Purpose: Generate responses using previous messages from the same session through Python's in-process conversation memory.
 
 Request:
+
 ```json
 {
   "session_id": "student_session_101",
@@ -166,6 +190,7 @@ Request:
 ```
 
 Response:
+
 ```json
 {
   "session_id": "student_session_101",
@@ -175,13 +200,18 @@ Response:
 
 Use the same session ID for subsequent messages to maintain conversation context.
 
+Note: This memory is temporary. It is stored in Python process memory and is lost when the server restarts.
+
+---
+
 ## 8. Memory + RAG Wellness Chat
 
 **POST `/memory-rag-chat`**
 
-Purpose: Combine conversation history with retrieved wellness information. Includes basic safety phrase screening.
+Purpose: Combine conversation history maintained by Python with retrieved wellness information. Includes basic safety phrase screening.
 
 Request:
+
 ```json
 {
   "session_id": "student_session_101",
@@ -189,7 +219,8 @@ Request:
 }
 ```
 
-Normal response:
+### Normal response
+
 ```json
 {
   "session_id": "student_session_101",
@@ -207,7 +238,8 @@ Normal response:
 }
 ```
 
-Possible-risk response:
+### Possible-risk response
+
 ```json
 {
   "session_id": "student_session_101",
@@ -229,35 +261,153 @@ Possible-risk response:
 }
 ```
 
-## 9. Request Validation
+Note: This endpoint uses Python's in-process memory and is not persistent across server restarts.
 
-For `ChatRequest`:
+---
+
+## 9. External Memory + RAG Wellness Chat
+
+**POST `/external-memory-rag-chat`**
+
+Purpose: Generate contextual wellness responses using conversation history supplied by the Node.js backend and relevant information retrieved from the wellness knowledge base.
+
+Unlike `/memory-rag-chat`, this endpoint does not maintain conversation history inside Python.
+
+Node.js is responsible for retrieving previous messages from MongoDB and supplying them through the `history` field.
+
+### Request
+
+```json
+{
+  "session_id": "student_session_101",
+  "message": "I am still feeling stressed about my exams.",
+  "history": [
+    {
+      "role": "user",
+      "content": "I have been feeling anxious lately."
+    },
+    {
+      "role": "assistant",
+      "content": "Would you like to talk about what has been making you anxious?"
+    },
+    {
+      "role": "user",
+      "content": "Mostly my upcoming exams."
+    }
+  ]
+}
+```
+
+### Normal response
+
+```json
+{
+  "session_id": "student_session_101",
+  "reply": "A contextual wellness response grounded in retrieved resources.",
+  "sources": [
+    {
+      "document": "who_doing_what_matters_in_times_of_stress.pdf",
+      "page": 10
+    }
+  ],
+  "safety": {
+    "possible_risk": false,
+    "resources": []
+  }
+}
+```
+
+### Possible-risk response
+
+```json
+{
+  "session_id": "student_session_101",
+  "reply": "Supportive safety guidance.",
+  "sources": [],
+  "safety": {
+    "possible_risk": true,
+    "resources": [
+      {
+        "name": "Tele-MANAS",
+        "phone": "14416"
+      },
+      {
+        "name": "Emergency services",
+        "phone": "112"
+      }
+    ]
+  }
+}
+```
+
+### How external conversation memory works
+
+1. The student sends a message through the React frontend.
+2. Node.js authenticates the student and identifies the chat session.
+3. Node.js retrieves previous messages from MongoDB.
+4. Node.js sends the current message and previous conversation history to this FastAPI endpoint.
+5. Python uses the supplied history and RAG knowledge base to generate a response.
+6. Node.js saves the assistant's response in MongoDB.
+7. The conversation history remains available for subsequent requests.
+
+**Important integration details:**
+
+- MongoDB persistence is managed by Node.js.
+- This FastAPI endpoint does not save messages or maintain persistent conversation history.
+- The endpoint processes at most the latest 20 history entries.
+- Only messages with `user` and `assistant` roles are accepted by the AI generation function.
+- Node.js must send previous messages in chronological order.
+- Node.js must manage session ownership and authentication.
+
+---
+
+## 10. Request Validation
+
+### ChatRequest
+
 - `message` must be a string.
 - Minimum length: 1 character.
 - Maximum length: 4000 characters.
 
-For `MemoryChatRequest`:
+### MemoryChatRequest
+
 - `session_id` must be a string between 1 and 128 characters.
 - `message` must be a string between 1 and 4000 characters.
 
+### ExternalMemoryChatRequest
+
+- `session_id` must be a string between 1 and 128 characters.
+- `message` must be a string between 1 and 4000 characters.
+- `history` must be a list of objects containing string keys and string values.
+- Supported conversation roles are `user` and `assistant`.
+- The AI generation function processes at most the latest 20 history entries.
+- Unsupported roles and empty message content are ignored by the AI generation function.
+
 Invalid request bodies may return HTTP 422.
 
-Whitespace-only messages may return HTTP 400 or be rejected by endpoint validation.
+Whitespace-only messages may return HTTP 400.
 
-## 10. Important Integration Notes
+---
+
+## 11. Important Integration Notes
 
 1. React should communicate with the Node.js backend.
 2. Node.js should communicate with the FastAPI AI service.
 3. Node.js should manage authentication and associate sessions with authenticated students.
 4. MongoDB should store persistent chat history and other application data.
 5. Never expose the Groq API key in frontend code.
-6. The current Python conversation memory is stored in process memory and is not persistent across server restarts.
-7. The AI service currently uses basic keyword-based safety screening. It can miss indirect, Hindi or Hinglish expressions of distress.
-8. `/chat` and `/memory-chat` do not currently include safety screening. Do not use them as student-facing mental-wellness chat routes until safety handling is added.
-9. The AI does not provide clinical diagnosis, prescribe medication or replace qualified counsellors.
-10. Emotion and sentiment predictions should not be treated as clinical assessments or used for consequential student decisions.
+6. The existing Python conversation memory is stored in process memory and is not persistent across server restarts.
+7. The `/external-memory-rag-chat` endpoint accepts conversation history from Node.js and does not store it in Python memory.
+8. For external-memory integration, Node.js should retrieve previous messages from MongoDB and send them in the `history` field.
+9. The AI service currently uses basic keyword-based safety screening. It can miss indirect, Hindi or Hinglish expressions of distress. It is not a clinically validated crisis-detection system.
+10. `/chat` and `/memory-chat` do not currently include safety screening. Do not use them as student-facing mental-wellness chat routes until safety handling is added.
+11. The AI does not provide clinical diagnosis, prescribe medication or replace qualified counsellors.
+12. Emotion and sentiment predictions should not be treated as clinical assessments or used for consequential student decisions.
+13. The AI service should return generic error messages rather than exposing API keys, stack traces or internal implementation details.
 
-## 11. Available Endpoints Summary
+---
+
+## 12. Available Endpoints Summary
 
 | Method | Endpoint | Purpose |
 |---|---|---|
@@ -267,5 +417,10 @@ Whitespace-only messages may return HTTP 400 or be rejected by endpoint validati
 | POST | `/sentiment` | Sentiment analysis |
 | POST | `/emotion` | Emotion detection |
 | POST | `/wellness-chat` | RAG wellness chatbot |
-| POST | `/memory-chat` | Chatbot with memory |
+| POST | `/memory-chat` | Chatbot with in-process memory |
 | POST | `/memory-rag-chat` | Memory + RAG chatbot |
+| POST | `/external-memory-rag-chat` | External conversation history + RAG chatbot |
+
+---
+
+**End of API Contract**

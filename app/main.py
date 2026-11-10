@@ -8,7 +8,10 @@ from app.sentiment import analyze_sentiment
 from app.safety import check_safety
 from app.emotion import analyze_emotion
 from app.chatbot import generate_memory_reply
-from app.chatbot import generate_memory_rag_reply
+from app.chatbot import (
+    generate_memory_rag_reply,
+    generate_external_memory_rag_reply
+)
 
 
 app = FastAPI(
@@ -37,6 +40,11 @@ class ChatRequest(BaseModel):
 class MemoryChatRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=128)
     message: str = Field(min_length=1, max_length=4000)
+
+class ExternalMemoryChatRequest(BaseModel):
+    session_id: str = Field(min_length=1, max_length=128)
+    message: str = Field(min_length=1, max_length=4000)
+    history: list[dict[str, str]] = Field(default_factory=list)
 
 
 @app.post("/chat")
@@ -181,7 +189,7 @@ def memory_rag_chat(request: MemoryChatRequest):
                 }
             }
 
-        # Step 3: Continue with memory + RAG
+        # Step 3: Generate response using memory + RAG
         result = generate_memory_rag_reply(
             message=message,
             session_id=request.session_id
@@ -205,6 +213,59 @@ def memory_rag_chat(request: MemoryChatRequest):
             status_code=502,
             detail="The wellness assistant is temporarily unavailable."
         )
+
+@app.post("/external-memory-rag-chat")
+def external_memory_rag_chat(
+    request: ExternalMemoryChatRequest
+):
+    try:
+        message = request.message.strip()
+
+        if not message:
+            raise HTTPException(
+                status_code=400,
+                detail="Message cannot be empty."
+            )
+
+        # Step 1: Basic safety screening
+        safety_result = check_safety(message)
+
+        if safety_result["possible_risk"]:
+            return {
+                "session_id": request.session_id,
+                "reply": safety_result["message"],
+                "sources": [],
+                "safety": {
+                    "possible_risk": True,
+                    "resources": safety_result["resources"]
+                }
+            }
+
+        # Step 2: Generate response using external history
+        result = generate_external_memory_rag_reply(
+            message=message,
+            history=request.history
+        )
+
+        return {
+            "session_id": request.session_id,
+            "reply": result["reply"],
+            "sources": result["sources"],
+            "safety": {
+                "possible_risk": False,
+                "resources": []
+            }
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        raise HTTPException(
+            status_code=502,
+            detail="The wellness assistant is temporarily unavailable."
+        )
+
 
 
 
