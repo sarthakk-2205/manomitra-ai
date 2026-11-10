@@ -306,14 +306,11 @@ def generate_external_memory_rag_reply(
     context = "\n\n".join(context_parts)
 
     if not context:
-        return {
-            "reply": (
-                "I couldn't find relevant information in my "
-                "wellness resources. Please consider speaking "
-                "with a qualified counselor for personal guidance."
-            ),
-            "sources": []
-        }
+       context = (
+        "No relevant wellness reference passages were found. "
+        "You may still answer general questions using the "
+        "conversation history. Do not invent wellness sources."
+    )
 
     # 2. Prepare conversation history
     messages = [
@@ -361,7 +358,7 @@ Rules:
         model=model_name,
         messages=messages,
         temperature=0.3,
-        max_completion_tokens=600
+        max_completion_tokens=1000
     )
 
     reply = completion.choices[0].message.content
