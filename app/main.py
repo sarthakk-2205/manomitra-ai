@@ -158,19 +158,53 @@ def memory_chat(request: MemoryChatRequest):
 @app.post("/memory-rag-chat")
 def memory_rag_chat(request: MemoryChatRequest):
     try:
+        message = request.message.strip()
+
+        if not message:
+            raise HTTPException(
+                status_code=400,
+                detail="Message cannot be empty."
+            )
+
+        # Step 1: Screen for possible safety risk
+        safety_result = check_safety(message)
+
+        # Step 2: If possible risk is detected, don't call the LLM
+        if safety_result["possible_risk"]:
+            return {
+                "session_id": request.session_id,
+                "reply": safety_result["message"],
+                "sources": [],
+                "safety": {
+                    "possible_risk": True,
+                    "resources": safety_result["resources"]
+                }
+            }
+
+        # Step 3: Continue with memory + RAG
         result = generate_memory_rag_reply(
-            message=request.message,
+            message=message,
             session_id=request.session_id
         )
 
         return {
             "session_id": request.session_id,
             "reply": result["reply"],
-            "sources": result["sources"]
+            "sources": result["sources"],
+            "safety": {
+                "possible_risk": False,
+                "resources": []
+            }
         }
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+
+    except Exception:
+        raise HTTPException(
+            status_code=502,
+            detail="The wellness assistant is temporarily unavailable."
+        )
 
 
 

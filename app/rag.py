@@ -1,4 +1,3 @@
-
 from functools import lru_cache
 from pathlib import Path
 import shutil
@@ -16,13 +15,22 @@ MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 COLLECTION_NAME = "manomitra_wellness"
 
 
+# Load embedding model only when first needed.
 @lru_cache(maxsize=1)
 def get_embeddings():
-    return HuggingFaceEmbeddings(
+    print("Loading RAG embedding model...")
+
+    model = HuggingFaceEmbeddings(
         model_name=MODEL_NAME,
         model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True},
+        encode_kwargs={
+            "normalize_embeddings": True,
+            "batch_size": 8
+        },
     )
+
+    print("RAG embedding model loaded!")
+    return model
 
 
 def build_vector_store():
@@ -41,7 +49,6 @@ def build_vector_store():
         for page in pages:
             text = " ".join(page.page_content.split())
 
-            # Skip covers and nearly empty pages
             if len(text) < 120:
                 continue
 
@@ -59,12 +66,16 @@ def build_vector_store():
         chunk_size=800,
         chunk_overlap=120,
     )
+
     chunks = splitter.split_documents(documents)
 
     if not chunks:
         raise ValueError("No text chunks were created.")
 
-    # Rebuilding starts with a clean local database.
+    # Clear cached vector store before rebuilding.
+    get_vector_store.cache_clear()
+
+    # Remove old database.
     if CHROMA_DIR.exists():
         shutil.rmtree(CHROMA_DIR)
 
@@ -75,18 +86,19 @@ def build_vector_store():
         collection_name=COLLECTION_NAME,
     )
 
-    # Clear any previously cached store after rebuilding.
-    get_vector_store.cache_clear()
-
     return store, len(chunks)
 
 
+# Open ChromaDB only when retrieval is requested.
 @lru_cache(maxsize=1)
 def get_vector_store():
     if not CHROMA_DIR.exists():
         raise FileNotFoundError(
-            "Knowledge base not found. Run build_knowledge_base.py first."
+            "Knowledge base not found. "
+            "Run build_knowledge_base.py first."
         )
+
+    print("Opening ChromaDB knowledge base...")
 
     return Chroma(
         persist_directory=str(CHROMA_DIR),
@@ -106,7 +118,6 @@ def search_wellness_documents(question: str, k: int = 3):
         k=k,
     )
 
-    # Initial threshold; tune using representative test questions.
     return [
         doc
         for doc, score in results
